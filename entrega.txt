@@ -6,4 +6,4 @@ Leonardo Fortini Marcelo - RM572566
 Nicolas Andrade Rodrigues - RM572782
 
 Link do video no YouTube (nao listado): <COLAR_AQUI_APOS_GRAVAR_E_SUBIR>
-Link do repositorio GitHub: <COLAR_AQUI_APOS_SUBIR_O_REPO>
+Link do repositorio GitHub: https://github.com/rhuanpcarreri-cmyk/Sprint4-SERS
