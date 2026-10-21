@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChargeGrid — Eletroposto Inteligente</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+<style>
+/* Layout: painel de operacao de eletroposto - cabecalho de sinalizacao, abas, coluna principal + assistente lateral */
+:root {
+  --bg: #f5f6f4; --surface: #ffffff; --surface-2: #eef0ec; --line: #dcdfd8;
+  --fg: #16201c; --fg-2: #4d5a54; --fg-3: #7b867f;
+  --accent: #c98500; --accent-ink: #1a1405; --accent-soft: #fbf0d6;
+  --solar: #eda100; --bateria: #1baf7a; --rede: #e34948; --ev: #2a78d6; --regra: #eb6834; --base: #8f8e88; --otimo: #6250d6;
+  --ok: #1f8a4c; --warn: #b26b00; --crit: #c23a3a;
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121815; --surface: #1a211e; --surface-2: #222b27; --line: #2f3a35;
+  --fg: #eef1ed; --fg-2: #b3beb8; --fg-3: #85918a;
+  --accent: #f0b429; --accent-ink: #1a1405; --accent-soft: #3a2e10;
+  --solar: #f0b429; --bateria: #199e70; --rede: #e66767; --ev: #3987e5; --regra: #d95926; --base: #9d9c95; --otimo: #9085e9;
+  --ok: #3cc47a; --warn: #f0a340; --crit: #ef6b6b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121815; --surface: #1a211e; --surface-2: #222b27; --line: #2f3a35;
+  --fg: #eef1ed; --fg-2: #b3beb8; --fg-3: #85918a;
+  --accent: #f0b429; --accent-ink: #1a1405; --accent-soft: #3a2e10;
+  --solar: #f0b429; --bateria: #199e70; --rede: #e66767; --ev: #3987e5; --regra: #d95926; --base: #9d9c95; --otimo: #9085e9;
+  --ok: #3cc47a; --warn: #f0a340; --crit: #ef6b6b; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1280px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: .01em; }
+h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.05; font-weight: 700; }
+h2 { font-size: 22px; }
+h3 { font-size: 17px; }
+.eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--fg-3); }
+.muted { color: var(--fg-2); }
+.num { font-variant-numeric: tabular-nums; }
+
+header.top { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-end; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.marca { display: flex; gap: 14px; align-items: center; }
+.plug { width: 46px; height: 46px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font: 700 22px var(--f-display); flex: none; }
+.equip { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 12px var(--f-mono); padding: 4px 8px; border-radius: 999px; background: var(--surface-2); color: var(--fg-2); border: 1px solid var(--line); white-space: nowrap; }
+
+nav.abas { display: flex; gap: 4px; margin: 18px 0; overflow-x: auto; }
+nav.abas button { font: 600 15px var(--f-display); letter-spacing: .03em; border: 1px solid var(--line); background: var(--surface); color: var(--fg-2); padding: 8px 16px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+nav.abas button[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.grade { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .grade { grid-template-columns: minmax(0, 1fr); } }
+.coluna { display: grid; gap: 20px; min-width: 0; }
+.painel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; min-width: 0; }
+.painel > header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.kpi .v { font: 600 30px/1.1 var(--f-display); font-variant-numeric: tabular-nums; }
+.kpi .d { font-size: 13px; color: var(--fg-2); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--f-mono); padding: 3px 8px; border-radius: 999px; }
+.pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pill.crit { color: var(--crit); background: color-mix(in srgb, var(--crit) 12%, transparent); }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+.canvas-box { position: relative; height: 300px; }
+.canvas-box.baixo { height: 160px; }
+.legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--fg-2); margin-top: 10px; }
+.legenda i { display: inline-block; width: 12px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+.tabela-box { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th { font: 500 11px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); }
+th:first-child, td:first-child { text-align: left; }
+td:first-child { white-space: normal; min-width: 150px; }
+td.destaque { font-weight: 600; color: var(--fg); }
+tr.sel td { background: var(--accent-soft); }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); color: var(--fg-2); font: 500 13px var(--f-body); padding: 6px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.controles { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* assistente */
+.volt { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; height: min(640px, calc(100vh - 40px)); padding: 0; overflow: hidden; }
+@media (max-width: 1000px) { .volt { position: static; height: 560px; } }
+.volt > header { padding: 14px 16px; margin: 0; border-bottom: 1px solid var(--line); }
+.msgs { overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 88%; padding: 9px 12px; border-radius: 12px; font-size: 14px; white-space: pre-line; }
+.msg.bot { background: var(--surface-2); align-self: flex-start; border-bottom-left-radius: 4px; }
+.msg.eu { background: var(--fg); color: var(--bg); align-self: flex-end; border-bottom-right-radius: 4px; }
+.sugestoes { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
+.sugestoes button { font: 13px var(--f-body); border: 1px solid var(--line); background: var(--surface); color: var(--fg-2); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+form.pergunta { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+form.pergunta input { flex: 1; min-width: 0; font: 15px var(--f-body); padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.btn { font: 600 14px var(--f-body); border: 0; background: var(--accent); color: var(--accent-ink); padding: 9px 14px; border-radius: 8px; cursor: pointer; }
+.btn.sec { background: var(--surface-2); color: var(--fg); border: 1px solid var(--line); }
+
+/* ao vivo */
+.vivo-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.fonte-badge { font: 700 26px var(--f-display); letter-spacing: .04em; }
+.campo { display: grid; gap: 4px; font-size: 13px; color: var(--fg-2); }
+.campo input, .campo select { font: 14px var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.cmd { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
+.nota { font-size: 13px; color: var(--fg-2); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+code { font: 13px var(--f-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+footer.rod { margin-top: 28px; font-size: 13px; color: var(--fg-3); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="marca">
+      <div class="plug" aria-hidden="true">⚡</div>
+      <div>
+        <div class="eyebrow">EV Challenge 2026 · FIAP + GoodWe · Sprint 4</div>
+        <h1>ChargeGrid — Eletroposto Inteligente</h1>
+      </div>
+    </div>
+    <div class="equip" id="equip"></div>
+  </header>
+
+  <nav class="abas" role="tablist" aria-label="Seções">
+    <button role="tab" id="tab-visao" aria-selected="true" data-aba="visao">Resultados 30 dias</button>
+    <button role="tab" id="tab-dia" aria-selected="false" data-aba="dia">Um dia por dentro</button>
+    <button role="tab" id="tab-vivo" aria-selected="false" data-aba="vivo">Ao vivo · ESP32</button>
+    <button role="tab" id="tab-sessoes" aria-selected="false" data-aba="sessoes">Sessões</button>
+  </nav>
+
+  <div class="grade">
+    <main class="coluna">
+      <!-- RESULTADOS -->
+      <section id="aba-visao" class="coluna">
+        <div class="kpis" id="kpis"></div>
+        <div class="painel">
+          <header><h2>Custo de energia por dia</h2><span class="muted" id="sub-custo"></span></header>
+          <div class="canvas-box"><canvas id="g-custo" aria-label="Custo diário por estratégia"></canvas></div>
+          <div class="legenda" id="leg-custo"></div>
+        </div>
+        <div class="painel">
+          <header><h2>As três estratégias lado a lado</h2><span class="eyebrow" id="periodo"></span></header>
+          <div class="tabela-box"><table id="t-comp"></table></div>
+        </div>
+        <div class="painel">
+          <header><h2>Viabilidade e impacto</h2><span class="eyebrow">valores de investimento ilustrativos</span></header>
+          <div class="tabela-box"><table id="t-viab"></table></div>
+        </div>
+      </section>
+
+      <!-- UM DIA -->
+      <section id="aba-dia" class="coluna" hidden>
+        <div class="painel">
+          <header>
+            <h2 id="titulo-dia">Perfil de 15 em 15 minutos</h2>
+            <div class="controles">
+              <div class="seg" id="seg-dia"><button type="button" data-v="ensolarado" aria-pressed="true">Dia ensolarado</button><button type="button" data-v="nublado" aria-pressed="false">Dia nublado</button></div>
+              <div class="seg" id="seg-est"><button type="button" data-v="regra" aria-pressed="false">Regra fixa</button><button type="button" data-v="inteligente" aria-pressed="true">Inteligente</button></div>
+            </div>
+          </header>
+          <div class="canvas-box"><canvas id="g-dia" aria-label="Fluxos de energia ao longo do dia"></canvas></div>
+          <div class="legenda">
+            <span><i style="background:var(--solar)"></i>Geração solar</span>
+            <span><i style="background:var(--ev)"></i>Recarga dos carros</span>
+            <span><i style="background:var(--rede)"></i>Importação da rede</span>
+            <span><i style="background:var(--bateria)"></i>Descarga da bateria</span>
+            <span><i style="background:var(--fg-3)"></i>Limite contratado</span>
+          </div>
+        </div>
+        <div class="painel">
+          <header><h3>Carga da bateria (%)</h3><span class="muted">faixa rosada = ponta 18h–21h</span></header>
+          <div class="canvas-box baixo"><canvas id="g-soc" aria-label="Estado de carga da bateria"></canvas></div>
+        </div>
+        <div class="painel" id="leitura-dia"></div>
+      </section>
+
+      <!-- AO VIVO -->
+      <section id="aba-vivo" class="coluna" hidden>
+        <div class="painel">
+          <header><h2>Telemetria do protótipo (Wokwi → MQTT)</h2><span id="st-mqtt" class="pill warn">desconectado</span></header>
+          <div class="controles" style="margin-bottom:14px">
+            <button class="btn" id="b-conectar" type="button">Conectar ao broker</button>
+            <span class="muted">Tópico <code>fiap/evchallenge/chargegrid/telemetria</code> em <code>broker.hivemq.com</code></span>
+          </div>
+          <div class="vivo-kpis" id="vivo-kpis"></div>
+          <div class="canvas-box" style="margin-top:14px"><canvas id="g-vivo" aria-label="Telemetria ao vivo"></canvas></div>
+        </div>
+        <div class="painel">
+          <header><h3>Comandos para o eletroposto</h3><span class="muted">publicados em <code>…/comando</code></span></header>
+          <div class="cmd">
+            <label class="campo">Modo<select id="c-modo"><option value="inteligente">Inteligente</option><option value="rapido">Rápido (regra fixa)</option><option value="local">Seguir chave física</option></select></label>
+            <label class="campo">Demanda contratada (kW)<input id="c-limite" type="number" min="5" max="30" step="1" value="15"></label>
+            <label class="campo">Reserva de ponta (kWh)<input id="c-reserva" type="number" min="0" max="13" step="0.5" value="8"></label>
+            <label class="campo">Previsão de sol amanhã (0–1)<input id="c-k" type="number" min="0.1" max="1" step="0.05" value="0.8"></label>
+            <button class="btn sec" id="b-enviar" type="button">Enviar ao ESP32</button>
+          </div>
+          <p class="nota" id="nota-vivo" style="margin:14px 0 0">Abra o projeto no Wokwi, inicie a simulação e clique em <b>Conectar</b>. O ESP32 publica um pacote a cada 15 minutos simulados (0,75 s).</p>
+        </div>
+      </section>
+
+      <!-- SESSOES -->
+      <section id="aba-sessoes" class="coluna" hidden>
+        <div class="painel">
+          <header><h2>Sessões de recarga · estratégia inteligente</h2>
+            <div class="controles">
+              <label class="campo">Perfil<select id="f-perfil"><option value="">todos</option><option>expediente</option><option>visita</option><option>noturno</option></select></label>
+              <label class="campo">Dia<select id="f-dia"></select></label>
+            </div>
+          </header>
+          <div class="tabela-box"><table id="t-sessoes"></table></div>
+          <p class="muted" id="resumo-sessoes"></p>
+        </div>
+      </section>
+    </main>
+
+    <aside class="painel volt" aria-label="Assistente virtual Volt">
+      <header><div class="eyebrow">Assistente virtual</div><h3>Volt — pergunte ao eletroposto</h3></header>
+      <div class="msgs" id="msgs" aria-live="polite"></div>
+      <div class="sugestoes" id="sugestoes"></div>
+      <form class="pergunta" id="f-pergunta">
+        <input id="q" type="text" autocomplete="off" placeholder="Ex.: quanto economizamos?" aria-label="Pergunta para o Volt">
+        <button class="btn" type="submit">Enviar</button>
+      </form>
+    </aside>
+  </div>
+  <footer class="rod">Dados gerados por <code>python -m motor.simulador</code> (30 dias, passos de 15 min). Tarifas e investimentos ilustrativos; fator de emissão médio do SIN 2023 (MCTI): 0,0385 kgCO₂/kWh.</footer>
+</div>
+
+<script id="dados" type="application/json">__DADOS__</script>
+<script>
+const R = JSON.parse(document.getElementById("dados").textContent);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, c = 0) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: c, maximumFractionDigits: c });
+const brl = v => "R$ " + fmt(v, 2);
+const T = R.totais, NOMES = { sem_sistema: "Só rede", regra: "Regra fixa (S2–S3)", inteligente: "Inteligente (S4)" };
+const COR = { sem_sistema: "--base", regra: "--regra", inteligente: "--ev", otimo: "--otimo" };
+const charts = {};
+
+// ---------- cabecalho ----------
+const E = R.parametros.equipamentos;
+document.getElementById("equip").innerHTML = ["GW10K-ET", "Lynx Home F 13,1 kWh", "2× GW11K-HCA", "SEMS+", "ESP32 + MQTT"]
+  .map(t => `<span class="chip">${t}</span>`).join("");
+document.getElementById("periodo").textContent = `${R.periodo_dias} dias · ${T.inteligente.sessoes} sessões`;
+
+// ---------- abas ----------
+const abas = [...document.querySelectorAll("nav.abas button")];
+function abrir(nome) {
+  abas.forEach(b => b.setAttribute("aria-selected", b.dataset.aba === nome));
+  ["visao", "dia", "vivo", "sessoes"].forEach(a => document.getElementById("aba-" + a).hidden = a !== nome);
+  if (nome === "dia") desenharDia();
+}
+abas.forEach(b => b.addEventListener("click", () => abrir(b.dataset.aba)));
+
+// ---------- KPIs ----------
+const eco = T.sem_sistema.custo_rs - T.inteligente.custo_rs;
+const limite = R.parametros.limite_rede_kw;
+document.getElementById("kpis").innerHTML = [
+  { e: "Economia em 30 dias", v: brl(eco), d: `${fmt(100 * eco / T.sem_sistema.custo_rs)}% abaixo de só rede · ${brl(T.regra.custo_rs - T.inteligente.custo_rs)} a mais que a regra fixa`, p: ["ok", "meta atingida"] },
+  { e: "Energia renovável", v: fmt(T.inteligente.pct_renovavel, 1) + "%", d: `${fmt(T.inteligente.energia_ev_kwh)} kWh entregues, sol direto ou via bateria`, p: ["ok", "solar + BESS"] },
+  { e: "Pico de demanda", v: fmt(T.inteligente.pico_rede_kw, 1) + " kW", d: `limite ${fmt(limite)} kW · regra fixa chegou a ${fmt(T.regra.pico_rede_kw, 1)} kW em ${T.regra.dias_acima_limite} dias`, p: T.inteligente.dias_acima_limite ? ["crit", "acima"] : ["ok", "dentro do limite"] },
+  { e: "Rede na ponta", v: fmt(T.inteligente.rede_ponta_kwh) + " kWh", d: `${fmt(100 * (1 - T.inteligente.rede_ponta_kwh / T.regra.rede_ponta_kwh))}% menos que a regra fixa (${fmt(T.regra.rede_ponta_kwh)} kWh)`, p: ["warn", "18h–21h"] },
+].map(k => `<div class="kpi"><span class="eyebrow">${k.e}</span><span class="v">${k.v}</span><span class="d">${k.d}</span><span class="pill ${k.p[0]}">${k.p[1]}</span></div>`).join("");
+
+// ---------- tabela comparativa ----------
+const linhas = [
+  ["Energia entregue (kWh)", "energia_ev_kwh", 0], ["% renovável na recarga", "pct_renovavel", 1],
+  ["Energia da rede (kWh)", "rede_kwh", 0], ["Rede na ponta (kWh)", "rede_ponta_kwh", 0],
+  ["Pico de demanda (kW)", "pico_rede_kw", 1], ["Dias acima do limite", "dias_acima_limite", 0],
+  ["Custo líquido (R$)", "custo_rs", 2], ["CO₂ fator médio (kg)", "co2_medio_kg", 1],
+  ["CO₂ marginal (kg)", "co2_marginal_kg", 0], ["Energia não entregue (kWh)", "nao_atendida_kwh", 1]];
+document.getElementById("t-comp").innerHTML =
+  `<tr><th>Indicador</th>${Object.values(NOMES).map(n => `<th>${n}</th>`).join("")}</tr>` +
+  linhas.map(([n, k, c]) => `<tr><td>${n}</td>${Object.keys(NOMES).map(e => `<td class="${e === "inteligente" ? "destaque" : ""}">${fmt(T[e][k], c)}</td>`).join("")}</tr>`).join("");
+
+const V = R.viabilidade, I = R.impacto;
+document.getElementById("t-viab").innerHTML = `<tr><th>Item</th><th>Valor</th></tr>` + [
+  ...Object.entries(V.capex_itens).map(([k, v]) => [k, brl(v)]),
+  ["Investimento total (CAPEX)", brl(V.capex_rs)],
+  ["Economia de energia por ano", brl(V.economia_energia_ano_rs)],
+  ["Payback só com economia", fmt(V.payback_so_economia_anos, 1) + " anos"],
+  [`Payback vendendo a ${brl(V.preco_venda_kwh)}/kWh`, fmt(V.payback_com_receita_anos, 1) + " anos"],
+  ["Km elétricos abastecidos no mês", fmt(I.km_eletricos_mes) + " km"],
+  ["CO₂ evitado vs. carros a gasolina", fmt(I.co2_evitado_vs_combustao_kg) + " kg/mês"],
+  ["Custo do ótimo teórico (sabe o futuro)", brl(I.custo_otimo_teorico_rs)],
+  ["Economia capturada vs. ótimo teórico", fmt(I.eficiencia_vs_otimo_pct, 1) + "%"],
+].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("");
+
+// ---------- Chart.js base ----------
+function baseOpts(extra = {}) {
+  const g = css("--line"), t = css("--fg-2");
+  return Object.assign({
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: { legend: { display: false }, tooltip: { backgroundColor: css("--fg"), titleColor: css("--bg"), bodyColor: css("--bg"), padding: 10 } },
+    scales: {
+      x: { grid: { color: g, drawTicks: false }, ticks: { color: t, font: { family: "IBM Plex Mono", size: 11 } }, border: { display: false } },
+      y: { grid: { color: g, drawTicks: false }, ticks: { color: t, font: { family: "IBM Plex Mono", size: 11 } }, border: { display: false }, beginAtZero: true },
+    },
+  }, extra);
+}
+
+function desenharCusto() {
+  const dias = R.estrategias.inteligente.dias.map(d => d.dia);
+  const ds = Object.keys(NOMES).map(k => ({
+    label: NOMES[k], data: R.estrategias[k].dias.map(d => d.custo_rs),
+    borderColor: css(COR[k]), backgroundColor: css(COR[k]), borderWidth: 2, pointRadius: 3, pointHoverRadius: 6, tension: 0,
+  }));
+  ds.push({ label: "Ótimo teórico", data: R.estrategias.inteligente.dias.map(d => d.custo_otimo_rs), borderColor: css("--otimo"),
+    backgroundColor: css("--otimo"), borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0 });
+  const o = baseOpts();
+  o.plugins.tooltip.callbacks = {
+    title: it => { const d = R.estrategias.inteligente.dias[it[0].dataIndex]; return `Dia ${d.dia} · ${d.tipo} · sol ${fmt(d.solar_kwh)} kWh`; },
+    label: it => ` ${it.dataset.label}: ${brl(it.parsed.y)}`,
+  };
+  o.scales.y.ticks.callback = v => "R$ " + v;
+  charts.custo?.destroy();
+  charts.custo = new Chart(document.getElementById("g-custo"), { type: "line", data: { labels: dias, datasets: ds }, options: o });
+  document.getElementById("leg-custo").innerHTML = ds.map(d => `<span><i style="background:${d.borderColor}"></i>${d.label}</span>`).join("");
+  document.getElementById("sub-custo").textContent = "picos = dias nublados";
+}
+
+// ---------- um dia ----------
+let diaSel = "ensolarado", estSel = "inteligente";
+function seg(id, cb) {
+  const bs = [...document.querySelectorAll(`#${id} button`)];
+  bs.forEach(b => b.addEventListener("click", () => { bs.forEach(x => x.setAttribute("aria-pressed", x === b)); cb(b.dataset.v); desenharDia(); }));
+}
+seg("seg-dia", v => diaSel = v); seg("seg-est", v => estSel = v);
+
+const faixaPonta = { id: "ponta", beforeDraw(c) {
+  const x = c.scales.x, a = c.chartArea; if (!x) return;
+  const x0 = x.getPixelForValue(72), x1 = x.getPixelForValue(84);
+  c.ctx.save(); c.ctx.fillStyle = css("--rede") + "1f"; c.ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top); c.ctx.restore();
+} };
+
+function desenharDia() {
+  const p = R.estrategias[estSel].passos_exemplo[diaSel];
+  const nDia = R.dias_exemplo[diaSel];
+  const resumo = R.estrategias[estSel].dias.find(d => d.dia === nDia);
+  const labels = p.map(x => { const h = Math.floor(x.hora), m = Math.round((x.hora - h) * 60); return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`; });
+  const serie = (lab, cor, dados, extra = {}) => Object.assign({ label: lab, data: dados, borderColor: css(cor), backgroundColor: css(cor), borderWidth: 2, pointRadius: 0, stepped: true }, extra);
+  const o = baseOpts();
+  o.scales.x.ticks.maxTicksLimit = 13; o.scales.y.suggestedMax = 23;
+  o.scales.y.title = { display: true, text: "kW", color: css("--fg-3") };
+  o.plugins.tooltip.callbacks = { label: it => ` ${it.dataset.label}: ${fmt(it.parsed.y, 1)} kW` };
+  charts.dia?.destroy();
+  charts.dia = new Chart(document.getElementById("g-dia"), { type: "line", plugins: [faixaPonta], options: o, data: { labels, datasets: [
+    serie("Geração solar", "--solar", p.map(x => x.solar_kw), { fill: true, backgroundColor: css("--solar") + "40", borderWidth: 1 }),
+    serie("Recarga dos carros", "--ev", p.map(x => x.ev_kw)),
+    serie("Importação da rede", "--rede", p.map(x => x.rede_kw)),
+    serie("Descarga da bateria", "--bateria", p.map(x => Math.max(0, -x.bateria_kw))),
+    serie("Limite contratado", "--fg-3", p.map(() => limite), { borderDash: [5, 4], borderWidth: 1, stepped: false }),
+  ] } });
+
+  const o2 = baseOpts(); o2.scales.y.max = 100; o2.scales.x.ticks.maxTicksLimit = 13;
+  o2.plugins.tooltip.callbacks = { label: it => ` ${it.dataset.label}: ${fmt(it.parsed.y)}%` };
+  charts.soc?.destroy();
+  charts.soc = new Chart(document.getElementById("g-soc"), { type: "line", plugins: [faixaPonta], options: o2, data: { labels, datasets: [
+    { label: "Regra fixa", data: R.estrategias.regra.passos_exemplo[diaSel].map(x => x.soc_pct), borderColor: css("--regra"), borderWidth: estSel === "regra" ? 2.5 : 1.5, pointRadius: 0 },
+    { label: "Inteligente", data: R.estrategias.inteligente.passos_exemplo[diaSel].map(x => x.soc_pct), borderColor: css("--ev"), borderWidth: estSel === "inteligente" ? 2.5 : 1.5, pointRadius: 0 },
+  ] } });
+
+  document.getElementById("titulo-dia").textContent = `Dia ${nDia} · ${resumo.tipo} · ${NOMES[estSel]}`;
+  const outro = R.estrategias[estSel === "regra" ? "inteligente" : "regra"].dias.find(d => d.dia === nDia);
+  const txt = estSel === "inteligente"
+    ? (diaSel === "nublado"
+      ? "A previsão apontava pouco sol, então o sistema completou a bateria com energia fora de ponta de madrugada. De manhã ela segurou a demanda abaixo do limite; à noite assumiu a recarga na ponta."
+      : "Com previsão de sol forte, o sistema deixa espaço na bateria para o excedente do meio-dia, empurra a recarga dos carros flexíveis para o horário de sol e guarda energia para a ponta.")
+    : "A regra fixa carrega cada carro na potência máxima assim que ele chega. Quando vários chegam juntos, a demanda passa do limite contratado, e a bateria descarrega cedo, sem reserva para a ponta.";
+  document.getElementById("leitura-dia").innerHTML = `<header><h3>O que aconteceu</h3></header><p style="margin:0 0 12px;max-width:70ch">${txt}</p>
+    <div class="tabela-box"><table><tr><th>Neste dia</th><th>${NOMES[estSel]}</th><th>${NOMES[estSel === "regra" ? "inteligente" : "regra"]}</th></tr>
+    ${[["Custo (R$)", "custo_rs", 2], ["Rede na ponta (kWh)", "rede_ponta_kwh", 1], ["Pico de rede (kW)", "pico_rede_kw", 1], ["% renovável", "pct_renovavel", 1]]
+      .map(([n, k, c]) => `<tr><td>${n}</td><td class="destaque">${fmt(resumo[k], c)}</td><td>${fmt(outro[k], c)}</td></tr>`).join("")}</table></div>`;
+}
+
+// ---------- sessoes ----------
+const fDia = document.getElementById("f-dia");
+fDia.innerHTML = `<option value="">todos</option>` + R.estrategias.inteligente.dias.map(d => `<option value="${d.dia}">${d.dia} · ${d.tipo}</option>`).join("");
+fDia.value = String(R.dias_exemplo.nublado);
+const hhmm = h => `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}`;
+function desenharSessoes() {
+  const perf = document.getElementById("f-perfil").value, dia = fDia.value;
+  const regra = Object.fromEntries(R.sessoes_regra.map(s => [s.id, s]));
+  const ss = R.sessoes_inteligente.filter(s => (!perf || s.perfil === perf) && (!dia || String(s.dia) === dia));
+  document.getElementById("t-sessoes").innerHTML = `<tr><th>Sessão</th><th>Perfil</th><th>Chegada</th><th>Saída</th><th>Pedido kWh</th><th>Entregue</th><th>% renovável</th><th>Custo energia</th><th>Regra fixa</th></tr>` +
+    ss.map(s => `<tr><td>${s.id}</td><td>${s.perfil}</td><td>${hhmm(s.chegada_h)}</td><td>${hhmm(s.saida_h)}</td><td>${fmt(s.energia_kwh, 1)}</td>
+      <td>${s.nao_atendida_kwh > 0.01 ? `<span class="pill crit">${fmt(s.entregue_kwh, 1)}</span>` : `<span class="pill ok">${fmt(s.entregue_kwh, 1)}</span>`}</td>
+      <td>${fmt(s.pct_renovavel, 1)}%</td><td class="destaque">${brl(s.custo_energia_rs)}</td><td>${brl(regra[s.id].custo_energia_rs)}</td></tr>`).join("");
+  const c1 = ss.reduce((a, s) => a + s.custo_energia_rs, 0), c2 = ss.reduce((a, s) => a + regra[s.id].custo_energia_rs, 0);
+  document.getElementById("resumo-sessoes").textContent = `${ss.length} sessões · custo de energia ${brl(c1)} no modo inteligente contra ${brl(c2)} na regra fixa · todas receberam 100% da energia pedida.`;
+}
+document.getElementById("f-perfil").addEventListener("change", desenharSessoes);
+fDia.addEventListener("change", desenharSessoes);
+
+// ---------- ao vivo (MQTT sobre WebSocket) ----------
+const TOP_T = "fiap/evchallenge/chargegrid/telemetria", TOP_C = "fiap/evchallenge/chargegrid/comando";
+let cli = null, tele = null;
+const buf = { l: [], s: [], e: [], r: [], b: [] };
+function stMqtt(cls, txt) { const el = document.getElementById("st-mqtt"); el.className = "pill " + cls; el.textContent = txt; }
+function desenharVivo() {
+  const t = tele || {};
+  const k = (n, v, sub = "") => `<div class="kpi"><span class="eyebrow">${n}</span><span class="v">${v}</span><span class="d">${sub}</span></div>`;
+  const h = t.hora != null ? hhmm(t.hora) : "--:--";
+  document.getElementById("vivo-kpis").innerHTML =
+    `<div class="kpi"><span class="eyebrow">Fonte agora · ${h}</span><span class="fonte-badge" style="color:${css({ SOLAR: "--solar", BATERIA: "--bateria", REDE: "--rede" }[t.fonte] || "--fg-2")}">${t.fonte || "—"}</span><span class="d">modo ${t.modo || "—"}</span></div>` +
+    k("Solar", t.solar_kw != null ? fmt(t.solar_kw, 1) + " kW" : "—") +
+    k("Recarga", t.ev_kw != null ? fmt(t.ev_kw, 1) + " kW" : "—", t.carro ? `faltam ${fmt(t.restante_kwh, 1)} kWh até ${hhmm(t.saida_h)}` : "sem carro") +
+    k("Bateria", t.soc_pct != null ? fmt(t.soc_pct) + "%" : "—") +
+    k("Rede", t.rede_kw != null ? fmt(t.rede_kw, 1) + " kW" : "—", t.tarifa ? `tarifa R$ ${fmt(t.tarifa, 2)}/kWh` : "") +
+    k("Economia do dia", t.economia_dia != null ? brl(t.economia_dia) : "—", t.pct_renovavel != null ? fmt(t.pct_renovavel) + "% renovável" : "");
+  if (!charts.vivo) {
+    const o = baseOpts(); o.scales.x.ticks.maxTicksLimit = 8;
+    charts.vivo = new Chart(document.getElementById("g-vivo"), { type: "line", options: o, data: { labels: buf.l, datasets: [
+      { label: "Solar", data: buf.s, borderColor: css("--solar"), pointRadius: 0, borderWidth: 2 },
+      { label: "Recarga", data: buf.e, borderColor: css("--ev"), pointRadius: 0, borderWidth: 2 },
+      { label: "Rede", data: buf.r, borderColor: css("--rede"), pointRadius: 0, borderWidth: 2 },
+      { label: "Descarga bateria", data: buf.b, borderColor: css("--bateria"), pointRadius: 0, borderWidth: 2 }] } });
+  } else charts.vivo.update();
+}
+document.getElementById("b-conectar").addEventListener("click", () => {
+  if (typeof mqtt === "undefined") { stMqtt("crit", "biblioteca MQTT não carregou"); return; }
+  if (cli) { cli.end(); cli = null; stMqtt("warn", "desconectado"); return; }
+  stMqtt("warn", "conectando…");
+  try {
+    cli = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", { connectTimeout: 8000, reconnectPeriod: 0 });
+  } catch (e) { stMqtt("crit", "conexão bloqueada"); return; }
+  cli.on("connect", () => { stMqtt("ok", "conectado"); cli.subscribe(TOP_T); });
+  cli.on("error", () => stMqtt("crit", "conexão recusada"));
+  cli.on("close", () => { if (cli) stMqtt("crit", "conexão encerrada — abra o arquivo localmente"); });
+  cli.on("message", (_, m) => {
+    try { tele = JSON.parse(m.toString()); } catch { return; }
+    buf.l.push(hhmm(tele.hora)); buf.s.push(tele.solar_kw); buf.e.push(tele.ev_kw); buf.r.push(tele.rede_kw); buf.b.push(Math.max(0, -tele.bateria_kw));
+    if (buf.l.length > 96) Object.values(buf).forEach(a => a.shift());
+    desenharVivo();
+  });
+});
+document.getElementById("b-enviar").addEventListener("click", () => {
+  const modo = document.getElementById("c-modo").value;
+  const cmd = { limite_kw: +document.getElementById("c-limite").value, reserva_kwh: +document.getElementById("c-reserva").value, k_previsto: +document.getElementById("c-k").value };
+  if (modo === "local") cmd.modo_local = true; else cmd.modo = modo;
+  if (!cli || !cli.connected) { document.getElementById("nota-vivo").textContent = "Conecte ao broker antes de enviar comandos."; return; }
+  cli.publish(TOP_C, JSON.stringify(cmd));
+  document.getElementById("nota-vivo").textContent = "Comando enviado: " + JSON.stringify(cmd);
+});
+
+// ---------- assistente Volt (mesmo motor de intencoes do assistente.py) ----------
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") + " ";
+const INTENCOES = [
+  [["oi", "ola", "bom dia", "boa tarde", "boa noite", "ajuda", "menu"], () => "Olá! Sou o Volt ⚡, assistente do Eletroposto Inteligente.\nPergunte sobre: status agora, melhor horário para carregar, economia, CO₂, % renovável, bateria, pico de demanda, payback ou equipamentos GoodWe."],
+  [["agora", "status", "ao vivo", "neste momento", "fonte atual"], () => tele
+    ? `Agora (${hhmm(tele.hora)}): fonte ${tele.fonte}, solar ${fmt(tele.solar_kw, 1)} kW, recarga ${fmt(tele.ev_kw, 1)} kW, bateria ${fmt(tele.soc_pct)}%, modo ${tele.modo}.`
+    : "Ainda não recebi telemetria do ESP32. Abra a aba Ao vivo, inicie o Wokwi e conecte ao broker."],
+  [["quando", "melhor hora", "mais barato carregar", "horario"], () => "Melhor janela: 10h–14h ☀️, com sol forte e energia praticamente gratuita. Evite 18h–21h (ponta, R$ 1,20/kWh). Informe sua hora de saída e o algoritmo distribui a recarga, garantindo a carga até lá."],
+  [["econom", "custo", "gast", "dinheiro", "r$"], () => `Em ${R.periodo_dias} dias o custo caiu de ${brl(T.sem_sistema.custo_rs)} (só rede) para ${brl(T.inteligente.custo_rs)}, economia de ${brl(eco)} (${fmt(100 * eco / T.sem_sistema.custo_rs)}%). O algoritmo inteligente economiza ${brl(T.regra.custo_rs - T.inteligente.custo_rs)} a mais que a regra fixa.`],
+  [["co2", "carbono", "emiss", "ambiental", "sustent"], () => `Os ${fmt(I.km_eletricos_mes)} km rodados com essa energia evitaram ~${fmt(I.co2_evitado_vs_combustao_kg)} kg de CO₂ frente a carros a gasolina. Tirando carga da ponta, o sistema evita mais ${fmt(I.co2_marginal_evitado_vs_base_kg)} kg de CO₂ marginal na rede.`],
+  [["renovavel", "solar", "sol "], () => `${fmt(T.inteligente.pct_renovavel, 1)}% da energia entregue veio do sol, direto ou guardado na bateria. Excedente exportado: ${fmt(T.inteligente.export_kwh)} kWh.`],
+  [["bateria", "soc", "reserva"], () => tele ? `A bateria está em ${fmt(tele.soc_pct)}%. Fora da ponta ela só é usada acima da reserva; das 18h às 21h assume a recarga.` : "A bateria Lynx Home F (13,1 kWh) guarda o sol do meio-dia para a ponta. A reserva é aprendida pelo histórico de uso e, em dias nublados previstos, completada com energia barata de madrugada."],
+  [["pico", "demanda", "ponta", "limite"], () => `Demanda contratada: ${fmt(limite)} kW. Regra fixa: pico de ${fmt(T.regra.pico_rede_kw, 1)} kW e ${T.regra.dias_acima_limite} dias acima do limite. Inteligente: ${fmt(T.inteligente.pico_rede_kw, 1)} kW e ${T.inteligente.dias_acima_limite} dias acima.`],
+  [["payback", "retorno", "investimento", "viabil", "capex"], () => `Investimento estimado ${brl(V.capex_rs)}. Só com a economia (${brl(V.economia_energia_ano_rs)}/ano) o payback é ~${fmt(V.payback_so_economia_anos, 1)} anos; vendendo a ${brl(V.preco_venda_kwh)}/kWh, cai para ~${fmt(V.payback_com_receita_anos, 1)} anos. Valores ilustrativos.`],
+  [["goodwe", "equipamento", "inversor", "carregador"], () => "Ecossistema GoodWe: inversor híbrido GW10K-ET • bateria Lynx Home F (4 módulos, 13,1 kWh) • 2 carregadores GW11K-HCA de 11 kW • monitoramento SEMS+, integrado ao nosso controlador ESP32."],
+  [["sessao", "sessoes", "carros", "recargas", "veiculos"], () => `${T.inteligente.sessoes} sessões em ${R.periodo_dias} dias, ${fmt(T.inteligente.energia_ev_kwh)} kWh entregues e ${fmt(T.inteligente.nao_atendida_kwh)} kWh deixados de entregar.`],
+];
+function responder(q) {
+  const n = norm(q);
+  for (const [ch, f] of INTENCOES) if (ch.some(c => n.includes(c))) return f();
+  return "Não entendi. Tente: status, melhor horário, economia, CO₂, bateria, pico, payback ou equipamentos.";
+}
+const msgs = document.getElementById("msgs");
+function falar(txt, quem) { const d = document.createElement("div"); d.className = "msg " + quem; d.textContent = txt; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; }
+document.getElementById("f-pergunta").addEventListener("submit", e => {
+  e.preventDefault(); const q = document.getElementById("q").value.trim(); if (!q) return;
+  falar(q, "eu"); falar(responder(q), "bot"); document.getElementById("q").value = "";
+});
+document.getElementById("sugestoes").innerHTML = ["Quanto economizamos?", "Melhor horário para carregar", "CO₂ evitado", "Pico de demanda", "Payback"].map(s => `<button type="button">${s}</button>`).join("");
+document.querySelectorAll("#sugestoes button").forEach(b => b.addEventListener("click", () => { falar(b.textContent, "eu"); falar(responder(b.textContent), "bot"); }));
+falar(responder("oi"), "bot");
+
+// ---------- inicio ----------
+function tudo() { desenharCusto(); desenharSessoes(); desenharVivo(); if (!document.getElementById("aba-dia").hidden) desenharDia(); }
+if (typeof Chart === "undefined") {
+  document.querySelectorAll(".canvas-box").forEach(c => c.innerHTML = '<p class="nota">Os gráficos precisam de internet para carregar a biblioteca Chart.js. As tabelas abaixo trazem os mesmos números.</p>');
+} else {
+  tudo();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { Object.values(charts).forEach(c => c.destroy()); Object.keys(charts).forEach(k => delete charts[k]); tudo(); });
+}
+</script>
+</body>
+</html>

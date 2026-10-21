@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "author": "EV Challenge 2026 - Eletroposto Inteligente (Sprint 4)",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-lcd1602", "id": "lcd", "top": -170, "left": 200, "attrs": { "pins": "i2c" } },
+
+    { "type": "wokwi-potentiometer", "id": "potSol", "top": 40, "left": -200, "attrs": { "value": "3600" } },
+    { "type": "wokwi-potentiometer", "id": "potEnergia", "top": 160, "left": -200, "attrs": { "value": "1800" } },
+    { "type": "wokwi-potentiometer", "id": "potSaida", "top": 280, "left": -200, "attrs": { "value": "2400" } },
+    { "type": "wokwi-text", "id": "t1", "top": 20, "left": -200, "attrs": { "text": "SOL (nuvens)" } },
+    { "type": "wokwi-text", "id": "t2", "top": 140, "left": -200, "attrs": { "text": "ENERGIA pedida" } },
+    { "type": "wokwi-text", "id": "t3", "top": 260, "left": -200, "attrs": { "text": "HORA de saida" } },
+
+    { "type": "wokwi-pushbutton", "id": "btnCarro", "top": 130, "left": 230, "attrs": { "color": "green", "label": "CARRO" } },
+    { "type": "wokwi-pushbutton", "id": "btnPausa", "top": 220, "left": 230, "attrs": { "color": "blue", "label": "PAUSA" } },
+    { "type": "wokwi-slide-switch", "id": "swModo", "top": 300, "left": 240, "attrs": {} },
+    { "type": "wokwi-text", "id": "t4", "top": 330, "left": 210, "attrs": { "text": "MODO  I | R" } },
+
+    { "type": "wokwi-led", "id": "ledV", "top": 0, "left": 320, "attrs": { "color": "green", "label": "LIMPA" } },
+    { "type": "wokwi-led", "id": "ledA", "top": 0, "left": 380, "attrs": { "color": "yellow", "label": "BATERIA" } },
+    { "type": "wokwi-led", "id": "ledR", "top": 0, "left": 440, "attrs": { "color": "red", "label": "REDE" } },
+    { "type": "wokwi-resistor", "id": "rV", "top": 70, "left": 320, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "rA", "top": 70, "left": 380, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "rR", "top": 70, "left": 440, "attrs": { "value": "220" } },
+    { "type": "wokwi-buzzer", "id": "bz", "top": 380, "left": 330, "attrs": { "volume": "0.1" } }
+  ],
+  "connections": [
+    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX0", "$serialMonitor:TX", "", [] ],
+
+    [ "esp:3V3", "lcd:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.1", "lcd:GND", "black", [ "v0" ] ],
+    [ "esp:D21", "lcd:SDA", "green", [ "v0" ] ],
+    [ "esp:D22", "lcd:SCL", "blue", [ "v0" ] ],
+
+    [ "esp:3V3", "potSol:VCC", "red", [ "h0" ] ],
+    [ "esp:GND.1", "potSol:GND", "black", [ "h0" ] ],
+    [ "esp:D34", "potSol:SIG", "orange", [ "h0" ] ],
+    [ "esp:3V3", "potEnergia:VCC", "red", [ "h0" ] ],
+    [ "esp:GND.1", "potEnergia:GND", "black", [ "h0" ] ],
+    [ "esp:D35", "potEnergia:SIG", "orange", [ "h0" ] ],
+    [ "esp:3V3", "potSaida:VCC", "red", [ "h0" ] ],
+    [ "esp:GND.1", "potSaida:GND", "black", [ "h0" ] ],
+    [ "esp:D32", "potSaida:SIG", "orange", [ "h0" ] ],
+
+    [ "esp:D25", "btnCarro:1.l", "green", [ "h0" ] ],
+    [ "esp:GND.2", "btnCarro:2.l", "black", [ "h0" ] ],
+    [ "esp:D26", "btnPausa:1.l", "blue", [ "h0" ] ],
+    [ "esp:GND.2", "btnPausa:2.l", "black", [ "h0" ] ],
+    [ "esp:D27", "swModo:2", "violet", [ "h0" ] ],
+    [ "esp:GND.2", "swModo:1", "black", [ "h0" ] ],
+
+    [ "esp:D4", "rV:1", "green", [ "v0" ] ],
+    [ "rV:2", "ledV:A", "green", [ "v0" ] ],
+    [ "ledV:C", "esp:GND.3", "black", [ "v0" ] ],
+    [ "esp:D5", "rA:1", "yellow", [ "v0" ] ],
+    [ "rA:2", "ledA:A", "yellow", [ "v0" ] ],
+    [ "ledA:C", "esp:GND.3", "black", [ "v0" ] ],
+    [ "esp:D2", "rR:1", "red", [ "v0" ] ],
+    [ "rR:2", "ledR:A", "red", [ "v0" ] ],
+    [ "ledR:C", "esp:GND.3", "black", [ "v0" ] ],
+
+    [ "esp:D15", "bz:1", "purple", [ "h0" ] ],
+    [ "esp:GND.2", "bz:2", "black", [ "h0" ] ]
+  ],
+  "dependencies": {}
+}

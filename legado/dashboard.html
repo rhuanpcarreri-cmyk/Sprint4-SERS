@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eletroposto Inteligente — Dashboard de Sessões (Sprint 3)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0e1420;
+    --panel:#161f30;
+    --panel-2:#1b2638;
+    --line:#2a3750;
+    --text:#e8edf5;
+    --muted:#8fa0bd;
+    --solar:#f4b740;
+    --bateria:#3fd6a3;
+    --rede:#ef6a63;
+    --ok:#3fd6a3;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    line-height:1.5;
+    padding:32px 20px 60px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  header{margin-bottom:36px;}
+  .eyebrow{color:var(--solar);font-size:13px;font-weight:600;letter-spacing:.02em;}
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:clamp(28px,4vw,40px);
+    margin:6px 0 8px;
+    font-weight:700;
+    line-height:1.15;
+  }
+  .subtitle{color:var(--muted);font-size:15px;max-width:640px;}
+  .team{color:var(--muted);font-size:13px;margin-top:14px;}
+
+  .kpis{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+    margin:28px 0 40px;
+  }
+  .kpi{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:18px 18px 16px;
+  }
+  .kpi .num{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;}
+  .kpi .label{color:var(--muted);font-size:12.5px;margin-top:4px;}
+  .kpi.solar .num{color:var(--solar);}
+  .kpi.bateria .num{color:var(--bateria);}
+  .kpi.economia .num{color:var(--ok);}
+
+  section{margin-bottom:44px;}
+  h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:19px;
+    font-weight:600;
+    margin:0 0 14px;
+    display:flex;align-items:center;gap:10px;
+  }
+  h2 .n{color:var(--muted);font-size:13px;font-weight:500;}
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:20px 22px;
+  }
+
+  .flow{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .flow .node{
+    flex:1 1 140px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px 14px;
+    text-align:center;
+    font-size:13.5px;
+  }
+  .flow .node .ic{font-size:22px;display:block;margin-bottom:6px;}
+  .flow .arrow{color:var(--muted);font-size:20px;padding:0 2px;}
+  .flow .node.core{
+    background:linear-gradient(180deg,#1c2740,#182034);
+    border-color:#3a4a6c;
+    font-weight:600;
+  }
+
+  .chart-box{height:280px;}
+
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  thead th{
+    text-align:left;color:var(--muted);font-weight:500;font-size:12.5px;
+    padding:0 10px 10px;border-bottom:1px solid var(--line);
+  }
+  tbody td{padding:12px 10px;border-bottom:1px solid var(--line);}
+  tbody tr:last-child td{border-bottom:none;}
+  .mix-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;width:120px;background:var(--panel-2);}
+  .mix-bar span{display:block;height:100%;}
+  .pct{font-weight:600;}
+  .pct.high{color:var(--ok);}
+  .pct.mid{color:var(--solar);}
+
+  footer{color:var(--muted);font-size:12.5px;margin-top:40px;border-top:1px solid var(--line);padding-top:18px;}
+
+  @media (max-width:720px){
+    .kpis{grid-template-columns:repeat(2,1fr);}
+    .flow{flex-direction:column;}
+    .flow .arrow{transform:rotate(90deg);}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">EV Challenge 2026 · Sprint 3 — Prototipagem Funcional e Integração</div>
+    <h1>Eletroposto Inteligente — Dashboard de Sessões</h1>
+    <p class="subtitle">Painel que consolida os dados coletados pelo controlador (ESP32) durante as sessões de recarga do dia, mostrando qual fonte de energia atendeu cada veículo e o resultado financeiro e ambiental de cada sessão.</p>
+    <div class="team">Mauricio Bertuci Saletti · Mateus Eduardo da Cruz Rocha · Lucas Caram Bueno · Rhuan Pacheco Carreri · Leonardo Fortini Marcelo · Nicolas Andrade Rodrigues</div>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section>
+    <h2>Integração dos componentes <span class="n">— fluxo de energia e dados</span></h2>
+    <div class="panel">
+      <div class="flow">
+        <div class="node"><span class="ic">☀️</span>Painel solar<br>10 kWp</div>
+        <div class="arrow">→</div>
+        <div class="node core"><span class="ic">🧠</span>ESP32<br>lógica SOLAR→BATERIA→REDE</div>
+        <div class="arrow">→</div>
+        <div class="node"><span class="ic">🔋</span>BESS<br>12 kWh</div>
+        <div class="arrow">→</div>
+        <div class="node"><span class="ic">🔌</span>Veículo<br>sessão de recarga</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Fontes de energia ao longo do dia <span class="n">— 24h, por hora</span></h2>
+    <div class="panel">
+      <div class="chart-box"><canvas id="chartHorario"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sessões de recarga registradas <span class="n">— coleta de dados do dia</span></h2>
+    <div class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>Sessão</th><th>Veículo</th><th>Horário</th><th>Energia</th>
+            <th>Mix de fontes</th><th>% renovável</th><th>Custo</th><th>Economia</th>
+          </tr>
+        </thead>
+        <tbody id="sessoesBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Dados gerados por <code>sessoes_recarga.py</code>, mesma lógica de decisão validada na Sprint 2 (ESP32 / Wokwi), agora aplicada a múltiplas sessões de recarga.
+  </footer>
+</div>
+
+<script>
+const sessoes = [{"id": 1, "veiculo": "EV-A", "hora_inicio": 8, "hora_fim": 9, "demanda_kwh": 8, "solar_kwh": 5.2, "bateria_kwh": 2.8, "rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.96, "total_kwh": 8.0, "pct_renovavel": 100.0, "custo_sem_sistema_rs": 4.8, "economia_rs": 4.8}, {"id": 2, "veiculo": "EV-B", "hora_inicio": 12, "hora_fim": 13, "demanda_kwh": 10, "solar_kwh": 10.0, "bateria_kwh": 0.0, "rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 1.2, "total_kwh": 10.0, "pct_renovavel": 100.0, "custo_sem_sistema_rs": 6.0, "economia_rs": 6.0}, {"id": 3, "veiculo": "EV-C", "hora_inicio": 15, "hora_fim": 16, "demanda_kwh": 14, "solar_kwh": 6.93, "bateria_kwh": 7.07, "rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 1.68, "total_kwh": 14.0, "pct_renovavel": 100.0, "custo_sem_sistema_rs": 8.4, "economia_rs": 8.4}, {"id": 4, "veiculo": "EV-D", "hora_inicio": 19, "hora_fim": 20, "demanda_kwh": 16, "solar_kwh": 1.35, "bateria_kwh": 9.6, "rede_kwh": 5.05, "custo_rs": 6.06, "co2_evitado_kg": 1.314, "total_kwh": 16.0, "pct_renovavel": 68.4, "custo_sem_sistema_rs": 19.2, "economia_rs": 13.14}];
+const horario = [{"hora": 0, "geracao_solar_kwh": 0.03, "demanda_kwh": 0, "soc_bateria_kwh": 4.83, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 1, "geracao_solar_kwh": 0.07, "demanda_kwh": 0, "soc_bateria_kwh": 4.9, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 2, "geracao_solar_kwh": 0.17, "demanda_kwh": 0, "soc_bateria_kwh": 5.07, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 3, "geracao_solar_kwh": 0.37, "demanda_kwh": 0, "soc_bateria_kwh": 5.44, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 4, "geracao_solar_kwh": 0.73, "demanda_kwh": 0, "soc_bateria_kwh": 6.17, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 5, "geracao_solar_kwh": 1.35, "demanda_kwh": 0, "soc_bateria_kwh": 7.52, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 6, "geracao_solar_kwh": 2.3, "demanda_kwh": 0, "soc_bateria_kwh": 9.82, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 7, "geracao_solar_kwh": 3.6, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 8, "geracao_solar_kwh": 5.2, "demanda_kwh": 8.0, "soc_bateria_kwh": 9.2, "usa_solar_kwh": 5.2, "usa_bateria_kwh": 2.8, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.96, "sessao_ativa": 1}, {"hora": 9, "geracao_solar_kwh": 6.93, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 10, "geracao_solar_kwh": 8.49, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 11, "geracao_solar_kwh": 9.6, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 12, "geracao_solar_kwh": 10.0, "demanda_kwh": 10.0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 10.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 1.2, "sessao_ativa": 2}, {"hora": 13, "geracao_solar_kwh": 9.6, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 14, "geracao_solar_kwh": 8.49, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 15, "geracao_solar_kwh": 6.93, "demanda_kwh": 14.0, "soc_bateria_kwh": 4.93, "usa_solar_kwh": 6.93, "usa_bateria_kwh": 7.07, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 1.68, "sessao_ativa": 3}, {"hora": 16, "geracao_solar_kwh": 5.2, "demanda_kwh": 0, "soc_bateria_kwh": 10.13, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 17, "geracao_solar_kwh": 3.6, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 18, "geracao_solar_kwh": 2.3, "demanda_kwh": 0, "soc_bateria_kwh": 12.0, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 19, "geracao_solar_kwh": 1.35, "demanda_kwh": 16.0, "soc_bateria_kwh": 2.4, "usa_solar_kwh": 1.35, "usa_bateria_kwh": 9.6, "usa_rede_kwh": 5.05, "custo_rs": 6.06, "co2_evitado_kg": 1.314, "sessao_ativa": 4}, {"hora": 20, "geracao_solar_kwh": 0.73, "demanda_kwh": 0, "soc_bateria_kwh": 3.13, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 21, "geracao_solar_kwh": 0.37, "demanda_kwh": 0, "soc_bateria_kwh": 3.5, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 22, "geracao_solar_kwh": 0.17, "demanda_kwh": 0, "soc_bateria_kwh": 3.67, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}, {"hora": 23, "geracao_solar_kwh": 0.07, "demanda_kwh": 0, "soc_bateria_kwh": 3.74, "usa_solar_kwh": 0.0, "usa_bateria_kwh": 0.0, "usa_rede_kwh": 0.0, "custo_rs": 0.0, "co2_evitado_kg": 0.0, "sessao_ativa": null}];
+
+// ---------- KPIs ----------
+const totalKwh = sessoes.reduce((a,s)=>a+s.total_kwh,0);
+const totalRenov = sessoes.reduce((a,s)=>a+s.solar_kwh+s.bateria_kwh,0);
+const totalCusto = sessoes.reduce((a,s)=>a+s.custo_rs,0);
+const totalEconomia = sessoes.reduce((a,s)=>a+s.economia_rs,0);
+const totalCO2 = sessoes.reduce((a,s)=>a+s.co2_evitado_kg,0);
+const pctRenov = (100*totalRenov/totalKwh).toFixed(1);
+
+const kpis = [
+  {cls:'solar', num: totalKwh.toFixed(1)+' kWh', label:'Energia entregue no dia · 4 sessões'},
+  {cls:'bateria', num: pctRenov+'%', label:'Atendida por fonte renovável (solar + bateria)'},
+  {cls:'economia', num:'R$ '+totalEconomia.toFixed(2), label:'Economia frente ao custo 100% rede'},
+  {cls:'', num: totalCO2.toFixed(2)+' kg', label:'CO₂ evitado no dia'},
+];
+document.getElementById('kpis').innerHTML = kpis.map(k=>
+  `<div class="kpi ${k.cls}"><div class="num">${k.num}</div><div class="label">${k.label}</div></div>`
+).join('');
+
+// ---------- Tabela de sessões ----------
+function mixBar(s){
+  const solarPct = 100*s.solar_kwh/s.total_kwh;
+  const bateriaPct = 100*s.bateria_kwh/s.total_kwh;
+  const redePct = 100*s.rede_kwh/s.total_kwh;
+  return `<div class="mix-bar">
+    <span style="width:${solarPct}%;background:var(--solar)"></span>
+    <span style="width:${bateriaPct}%;background:var(--bateria)"></span>
+    <span style="width:${redePct}%;background:var(--rede)"></span>
+  </div>`;
+}
+document.getElementById('sessoesBody').innerHTML = sessoes.map(s=>{
+  const pctClass = s.pct_renovavel >= 90 ? 'high' : (s.pct_renovavel >= 60 ? 'mid' : '');
+  return `<tr>
+    <td>#${s.id}</td>
+    <td>${s.veiculo}</td>
+    <td>${s.hora_inicio}h–${s.hora_fim}h</td>
+    <td>${s.total_kwh.toFixed(1)} kWh</td>
+    <td>${mixBar(s)}</td>
+    <td class="pct ${pctClass}">${s.pct_renovavel.toFixed(1)}%</td>
+    <td>R$ ${s.custo_rs.toFixed(2)}</td>
+    <td>R$ ${s.economia_rs.toFixed(2)}</td>
+  </tr>`;
+}).join('');
+
+// ---------- Gráfico horário (stacked) ----------
+const ctx = document.getElementById('chartHorario');
+new Chart(ctx, {
+  type:'bar',
+  data:{
+    labels: horario.map(h=>h.hora+'h'),
+    datasets:[
+      {label:'Solar', data:horario.map(h=>h.usa_solar_kwh), backgroundColor:'#f4b740', stack:'s'},
+      {label:'Bateria', data:horario.map(h=>h.usa_bateria_kwh), backgroundColor:'#3fd6a3', stack:'s'},
+      {label:'Rede', data:horario.map(h=>h.usa_rede_kwh), backgroundColor:'#ef6a63', stack:'s'},
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ color:'#e8edf5', font:{family:'Inter'} } } },
+    scales:{
+      x:{ stacked:true, ticks:{ color:'#8fa0bd' }, grid:{ color:'#2a3750' } },
+      y:{ stacked:true, ticks:{ color:'#8fa0bd' }, grid:{ color:'#2a3750' }, title:{display:true,text:'kWh',color:'#8fa0bd'} }
+    }
+  }
+});
+</script>
+</body>
+</html>
